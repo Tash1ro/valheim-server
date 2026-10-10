@@ -1428,6 +1428,7 @@ window.HEARTH_EN = {
   "Недопустимый адрес скачивания мода": "Invalid mod download URL",
   "Скачивание модов разрешено только с HTTPS Thunderstore или Hexium": "Mods can only be downloaded over HTTPS from Thunderstore or Hexium",
   "Пакет мода не найден": "Mod package not found",
+  "Недопустимая версия мода": "Invalid mod version",
   "Не удалось скачать пакет мода": "Could not download the mod package",
   "Hexium вернул недопустимый список пакетов": "Hexium returned an invalid package list",
   "Укажите URL Thunderstore или Hexium либо Author-Package-version": "Enter a Thunderstore or Hexium URL or Author-Package-version",

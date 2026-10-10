@@ -304,6 +304,17 @@ def _plugin_path(name):
     return '/'.join(parts)
 
 
+def _version_key(value):
+    if not isinstance(value, str) or not VERSION.fullmatch(value):
+        raise ValueError('Недопустимая версия мода')
+    return tuple(int(part) for part in value.split('.'))
+
+
+def _satisfies(version, required):
+    """A dependency version is a minimum, as in r2modman and Gale."""
+    return _version_key(version) >= _version_key(required)
+
+
 def _external(ident):
     namespace, name = ident.split('-', 1)
     if name.casefold() == 'bepinexpack_valheim':
@@ -597,7 +608,7 @@ class ModManager:
                 if self._check_external(ident, version, external_versions):
                     continue
                 dependency = by_id.get(ident.casefold())
-                if (not dependency or not dependency['enabled'] or dependency['version'] != version
+                if (not dependency or not dependency['enabled'] or not _satisfies(dependency['version'], version)
                         or not _covers(dependency['scope'], package['scope'])):
                     raise ValueError(f'Мод {package["id"]} требует включённую зависимость {reference} в той же области')
             for entry in package['files']:
@@ -625,14 +636,14 @@ class ModManager:
                 if explicit:
                     raise ValueError('Загрузчик и Valheim Plus управляются панелью отдельно')
                 return
-            if pin:
-                if key in pins and pins[key] != pin:
-                    raise ValueError(f'Конфликт версий зависимости {current}: {pins[key]} и {pin}')
+            if pin and (key not in pins or not _satisfies(pins[key], pin)):
                 pins[key] = pin
             if current.casefold() in visiting:
                 raise ValueError('Циклическая зависимость модов')
             existing = packages.get(current.casefold())
-            if existing and not explicit and existing['version'] == pin:
+            # Keep an installed or already staged version that is new enough; otherwise
+            # stage the required one, replacing an older copy (the newest requirement wins).
+            if existing and not explicit and _satisfies(existing['version'], pin):
                 was_enabled = existing['enabled']
                 existing['enabled'] = existing['enabled'] or activate
                 existing['scope'] = _join_scope(existing['scope'], required) if was_enabled else required
@@ -679,7 +690,7 @@ class ModManager:
             staged_size += stored['size']
             if staged_size > MAX_TRANSACTION:
                 raise ValueError('Общий размер устанавливаемых модов превышает допустимый размер')
-            if key in pins and pins[key] != number:
+            if key in pins and not _satisfies(number, pins[key]):
                 raise ValueError(f'Конфликт версий зависимости {current}')
             pins[key] = number
             for dependency in dependencies:

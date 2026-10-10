@@ -114,32 +114,45 @@ class ModTests(unittest.TestCase):
         self.assertEqual(dependency['version'], '2.0.0')
         self.assertEqual(dependency['scope'], 'both')
 
-    def test_shared_dependency_pin_prevents_partial_parent_update(self):
+    def test_shared_dependency_upgrade_satisfies_older_minimum_but_never_downgrades(self):
         self.add('Author-Library')
         self.add('Author-World', deps=['Author-Library-1.0.0'])
         self.add('Other-Weather', deps=['Author-Library-1.0.0'])
         self.manager.install('Author-World')
         self.manager.install('Other-Weather')
-        before = self.manager.view()
-        old_manifest = self.manager.manifest.read_bytes()
         self.add('Author-Library', '2.0.0')
         self.add('Author-World', '2.0.0', ['Author-Library-2.0.0'])
-        with self.assertRaisesRegex(ValueError, 'Author-Library-1.0.0'):
-            self.manager.update('Author-World')
+        self.manager.update('Author-World')
+        self.assertEqual(self.versions(), {'Author-Library': '2.0.0', 'Author-World': '2.0.0', 'Other-Weather': '1.0.0'})
+        self.assertEqual(len(list((self.manager.root / 'packages').iterdir())), 3)
+        before = self.manager.view()
+        old_manifest = self.manager.manifest.read_bytes()
+        with self.assertRaisesRegex(ValueError, 'Author-Library-2.0.0'):
+            self.manager.install('Author-Library-1.0.0')
         self.assertEqual(self.manager.view(), before)
         self.assertEqual(self.manager.manifest.read_bytes(), old_manifest)
         self.assertEqual(len(list((self.manager.root / 'packages').iterdir())), 3)
 
-    def test_two_incompatible_pins_in_new_dependency_graph_are_rejected(self):
+    def test_different_minimums_in_new_dependency_graph_resolve_to_newest(self):
         self.add('Author-Library')
         self.add('Author-Library', '2.0.0')
         self.add('Author-First', deps=['Author-Library-1.0.0'])
         self.add('Author-Second', deps=['Author-Library-2.0.0'])
         self.add('Author-World', deps=['Author-First-1.0.0', 'Author-Second-1.0.0'])
-        with self.assertRaisesRegex(ValueError, 'Конфликт версий'):
-            self.manager.install('Author-World')
-        self.assertEqual(self.manager.view()['packages'], [])
-        self.assertEqual(list((self.manager.root / 'packages').iterdir()), [])
+        self.manager.install('Author-World')
+        self.assertEqual(self.versions()['Author-Library'], '2.0.0')
+        self.assertEqual(len(list((self.manager.root / 'packages').iterdir())), 4)  # staged 1.0.0 was collected
+
+    def test_dependency_updates_on_its_own_and_parent_update_keeps_newer_copy(self):
+        # RandyKnapp-EpicLoot pins Jotunn 2.29.2, while Valheim 1.0 needs Jotunn 2.30.x.
+        self.add('ValheimModding-Jotunn', '2.29.2')
+        self.add('RandyKnapp-EpicLoot', '0.14.13', ['ValheimModding-Jotunn-2.29.2'])
+        self.manager.install('RandyKnapp-EpicLoot', scope='both')
+        self.add('ValheimModding-Jotunn', '2.30.2')
+        self.manager.update('ValheimModding-Jotunn')
+        self.manager.update('RandyKnapp-EpicLoot')
+        self.assertEqual(self.versions(), {'RandyKnapp-EpicLoot': '0.14.13', 'ValheimModding-Jotunn': '2.30.2'})
+        self.assertEqual(next(item for item in self.manager.view()['packages'] if item['id'] == 'ValheimModding-Jotunn')['scope'], 'both')
 
     def test_scope_expands_dependency_and_exports_only_client_packages(self):
         self.add('Author-Library')
